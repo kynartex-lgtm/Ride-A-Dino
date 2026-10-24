@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
@@ -21,8 +22,19 @@ local Net = Modules and safeRequire(Modules:FindFirstChild("NetBridge"))
 local Ride = Modules and safeRequire(Modules:FindFirstChild("Ride"))
 local Track = GameRoot and safeRequire(GameRoot.Config:FindFirstChild("Track"))
 local DinosConfig = GameRoot and GameRoot.Config and safeRequire(GameRoot.Config:FindFirstChild("Dinos"))
+local SpecimenConfig = GameRoot and GameRoot.Config and safeRequire(GameRoot.Config:FindFirstChild("Specimen"))
 
-local RarityAliases = {common = "Common", uncommon = "Uncommon", rare = "Rare", epic = "Epic", legendary = "Legendary", mythic = "Mythic", secret = "Secret"}
+local RarityAliases = {
+    common = "Common", uncommon = "Uncommon", rare = "Rare", epic = "Epic", legendary = "Legendary",
+    mythic = "Mythic", cosmic = "Cosmic", secret = "Secret", eternal = "Eternal", divine = "Divine",
+}
+local RarityOrder = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Cosmic", "Secret", "Eternal", "Divine"}
+local MutationOrder = {"None", "Silver", "Golden", "Rainbow", "Magma", "Spectral"}
+if SpecimenConfig and type(SpecimenConfig.MUTATION_ORDER) == "table" then
+    MutationOrder = SpecimenConfig.MUTATION_ORDER
+end
+local MutationAliases = {}
+for _, mutation in ipairs(MutationOrder) do MutationAliases[string.lower(mutation)] = mutation end
 local RarityBySpecies = {}
 local FoundRarities = {}
 local function collectRarities(value, nameHint, seen)
@@ -59,6 +71,8 @@ local State = {
     CameraLock = false,
     RarityESP = false,
     ESPRarity = "Secret",
+    ESPMutation = "Any",
+    AutoFallSave = true,
     Zone = nil,
 }
 
@@ -188,7 +202,7 @@ Window = Luna:CreateWindow({
 
 local Stamina = Window:CreateTab({Name = "Stamina", Icon = "6035121907", ImageSource = "Custom", ShowTitle = true})
 Stamina:CreateSection("Grip management")
-Stamina:CreateParagraph({Title = "Stamina is Grip", Content = "The live stats expose Grip as an absolute amount, with no maximum/cap field. Auto-train therefore uses an absolute Grip threshold; a 100% setting cannot be calculated from the game data currently exposed. Training requests use the normal machine path and remain server-validated."})
+Stamina:CreateParagraph({Title = "Stamina is Grip", Text = "The live stats expose Grip as an absolute amount, with no maximum/cap field. Auto-train therefore uses an absolute Grip threshold; a 100% setting cannot be calculated from the game data currently exposed. Training requests use the normal machine path and remain server-validated."})
 Stamina:CreateButton({Name = "Mount Training Machine", Description = "Requests a normal machine mount at your current position.", Callback = function()
     callNet("machineMount")
 end})
@@ -225,7 +239,7 @@ Zones:CreateButton({Name = "Go to Selected Zone", Description = "Uses Ride.telep
     end
     notify("Zone unavailable", "The selected stage is not present in Track.Stages.")
 end})
-Zones:CreateParagraph({Title = "Stage data", Content = "Destinations are loaded from the game's Track configuration, including the repeated Plains segment. If zone travel is locked or unavailable, the game handles that response."})
+Zones:CreateParagraph({Title = "Stage data", Text = "Destinations are loaded from the game's Track configuration, including the repeated Plains segment. If zone travel is locked or unavailable, the game handles that response."})
 
 local Performance = Window:CreateTab({Name = "Performance", Icon = "6026681578", ImageSource = "Custom", ShowTitle = true})
 Performance:CreateSection("Local graphics")
@@ -280,7 +294,10 @@ end})
 
 local Safety = Window:CreateTab({Name = "Safety", Icon = "6035078889", ImageSource = "Custom", ShowTitle = true})
 Safety:CreateSection("Fall awareness and recovery")
-Safety:CreateParagraph({Title = "How the safety options work", Content = "The inspected client modules expose ride state and lane geometry, but no supported invulnerability or no-fall switch. Lane Guard warns when your character is close to a course edge. The game owns revive handling; this panel does not send revive requests."})
+Safety:CreateParagraph({Title = "How the safety options work", Text = "Auto Fall Save watches for a fast descent near the ground and moves you above the nearest loaded dinosaur within 120 studs. Lane Guard warns when your character is close to a course edge. This is a client-side position change and can be rejected by the game."})
+Safety:CreateToggle({Name = "Auto Fall Save", Description = "On by default. When a fast fall is about to land, moves you onto the nearest loaded dinosaur within 120 studs.", CurrentValue = true, Callback = function(value)
+    State.AutoFallSave = value
+end})
 Safety:CreateToggle({Name = "Lane-edge Warning", Description = "Warns when your character approaches the current stage's course edge.", CurrentValue = false, Callback = function(value)
     State.LaneGuard = value
 end})
@@ -311,7 +328,9 @@ end})
 
 local QoL = Window:CreateTab({Name = "QoL", Icon = "6031265971", ImageSource = "Custom", ShowTitle = true})
 QoL:CreateSection("Rarity highlights")
-local RarityOptions = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret", "All"}
+local RarityOptions = {}
+for _, rarity in ipairs(RarityOrder) do table.insert(RarityOptions, rarity) end
+table.insert(RarityOptions, "All")
 for rarity in pairs(FoundRarities) do
     local present = false
     for _, option in ipairs(RarityOptions) do if option == rarity then present = true break end end
@@ -319,6 +338,11 @@ for rarity in pairs(FoundRarities) do
 end
 QoL:CreateDropdown({Name = "ESP Rarity", Options = RarityOptions, CurrentOption = {State.ESPRarity}, MultipleOptions = false, Callback = function(value)
     State.ESPRarity = type(value) == "table" and value[1] or value
+end})
+local MutationOptions = {"Any"}
+for _, mutation in ipairs(MutationOrder) do table.insert(MutationOptions, mutation) end
+QoL:CreateDropdown({Name = "ESP Mutation", Options = MutationOptions, CurrentOption = {State.ESPMutation}, MultipleOptions = false, Callback = function(value)
+    State.ESPMutation = type(value) == "table" and value[1] or value
 end})
 QoL:CreateToggle({Name = "Highlight Selected Rarity", Description = "Locally highlights streamed dinosaur models matching the selected rarity.", CurrentValue = false, Callback = function(value)
     State.RarityESP = value
@@ -332,7 +356,7 @@ QoL:CreateToggle({Name = "Auto-claim Offline Income", Description = "Checks offl
 end})
 QoL:CreateButton({Name = "Claim Gifts Now", Callback = function() callNet("giftClaim", true) end})
 QoL:CreateButton({Name = "Claim Offline Income Now", Callback = function() callNet("offlineClaim") end})
-QoL:CreateParagraph({Title = "Status", Content = "Grip: reading… • Stage: " .. tostring(State.Zone)})
+QoL:CreateParagraph({Title = "Status", Text = "Grip: reading… • Stage: " .. tostring(State.Zone)})
 
 -- Known Secret species are a fallback for models without a rarity attribute.
 local SecretSpecies = {
@@ -346,29 +370,61 @@ local SecretSpecies = {
     ["Skeletal Rex"] = true,
 }
 local RarityHighlights = {}
+local function speciesId(model)
+    for _, key in ipairs({"RunSpecies", "Species", "DinoId", "dinoId", "species", "dino", "spec", "specimen", "id"}) do
+        local value = model:GetAttribute(key)
+        if type(value) == "string" and value ~= "" then return value end
+    end
+    if RarityBySpecies[model.Name] or SecretSpecies[model.Name] then return model.Name end
+    return nil
+end
+
+local function dinoRecord(id)
+    if not id or not DinosConfig or type(DinosConfig.byId) ~= "function" then return nil end
+    local ok, record = pcall(DinosConfig.byId, id)
+    return ok and type(record) == "table" and record or nil
+end
+
 local function modelRarity(model)
     if not model:IsA("Model") then return nil end
-    for _, key in ipairs({"rarity", "rarityName", "tier"}) do
+    for _, key in ipairs({"Rarity", "rarity", "RarityName", "rarityName", "Tier", "tier", "RunTier"}) do
         local value = model:GetAttribute(key)
         if type(value) == "string" and RarityAliases[string.lower(value)] then
             return RarityAliases[string.lower(value)]
         end
     end
-    if RarityBySpecies[model.Name] then return RarityBySpecies[model.Name] end
+    local id = speciesId(model)
+    local record = dinoRecord(id)
+    local rarity = record and (record.rarity or record.tier)
+    if type(rarity) == "string" and RarityAliases[string.lower(rarity)] then
+        return RarityAliases[string.lower(rarity)]
+    end
+    if id and RarityBySpecies[id] then return RarityBySpecies[id] end
     if SecretSpecies[model.Name] then return "Secret" end
-    for _, key in ipairs({"species", "dino", "dinoId", "spec", "specimen", "id"}) do
+    return nil
+end
+
+local function modelMutation(model)
+    for _, key in ipairs({"RunMutation", "Mutation", "mutation"}) do
         local value = model:GetAttribute(key)
         if type(value) == "string" then
-            if RarityBySpecies[value] then return RarityBySpecies[value] end
-            if SecretSpecies[value] then return "Secret" end
+            local normalized = MutationAliases[string.lower(value)]
+            if normalized then return normalized end
+            if string.lower(value) == "normal" then return "None" end
         end
     end
-    return nil
+    return "None"
 end
 
 local function matchesSelectedRarity(model)
     local rarity = modelRarity(model)
-    return rarity ~= nil and (State.ESPRarity == "All" or rarity == State.ESPRarity)
+    local matchesRarity = rarity ~= nil and (State.ESPRarity == "All" or rarity == State.ESPRarity)
+    local matchesMutation = State.ESPMutation == "Any" or modelMutation(model) == State.ESPMutation
+    return matchesRarity and matchesMutation
+end
+
+local function isDinoModel(model)
+    return model:IsA("Model") and speciesId(model) ~= nil
 end
 
 local RarityColors = {
@@ -378,7 +434,10 @@ local RarityColors = {
     Epic = Color3.fromRGB(185, 100, 255),
     Legendary = Color3.fromRGB(255, 190, 70),
     Mythic = Color3.fromRGB(255, 90, 120),
+    Cosmic = Color3.fromRGB(150, 110, 255),
     Secret = Color3.fromRGB(126, 126, 255),
+    Eternal = Color3.fromRGB(32, 229, 200),
+    Divine = Color3.fromRGB(255, 236, 140),
 }
 
 local function refreshRarityHighlights()
@@ -406,6 +465,51 @@ local function refreshRarityHighlights()
         end
     end
 end
+
+local lastFallSaveAttempt = 0
+local function tryFallSave()
+    if not State.AutoFallSave then return end
+    local now = os.clock()
+    if now - lastFallSaveAttempt < 1.25 then return end
+
+    local character = LocalPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not root or humanoid.FloorMaterial ~= Enum.Material.Air then return end
+    local humanoidState = humanoid:GetState()
+    if humanoidState ~= Enum.HumanoidStateType.Freefall and humanoidState ~= Enum.HumanoidStateType.FallingDown then return end
+    if root.AssemblyLinearVelocity.Y > -25 then return end
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {character}
+    local rayOk, ground = pcall(function()
+        return workspace:Raycast(root.Position, Vector3.new(0, -24, 0), rayParams)
+    end)
+    if not rayOk or not ground or ground.Distance > 22 then return end
+
+    lastFallSaveAttempt = now
+    local closestModel, closestDistance, closestBox, closestSize = nil, 120, nil, nil
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") and object ~= character and isDinoModel(object) then
+            local ok, box, size = pcall(function() return object:GetBoundingBox() end)
+            if ok then
+                local distance = (box.Position - root.Position).Magnitude
+                if distance < closestDistance then
+                    closestModel, closestDistance, closestBox, closestSize = object, distance, box, size
+                end
+            end
+        end
+    end
+
+    if closestModel and closestModel.Parent then
+        local safePosition = closestBox.Position + Vector3.new(0, closestSize.Y * 0.5 + 3, 0)
+        root.CFrame = CFrame.new(safePosition) * root.CFrame.Rotation
+        root.AssemblyLinearVelocity = Vector3.zero
+        notify("Fall save", "Moved above the nearest nearby dinosaur.")
+    end
+end
+RunService.Heartbeat:Connect(tryFallSave)
 
 -- Single, throttled worker. It uses only the game client modules inspected above.
 task.spawn(function()
