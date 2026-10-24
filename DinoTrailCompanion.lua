@@ -70,18 +70,26 @@ local State = {
     LaneGuard = false,
     CameraLock = false,
     RarityESP = false,
-    ESPRarity = "Secret",
-    ESPMutation = "Any",
+    ESPRarities = {"Secret"},
+    ESPMutations = {"Any"},
+    ESPSpecies = {"All species"},
+    ESPRadius = 350,
+    ESPLabels = false,
+    FallSaveRadius = 120,
     AutoFallSave = true,
     Zone = nil,
 }
 
+local WindUI
 local Window
 
 local function notify(title, content)
-    pcall(function()
-        warn("[Trail Companion] " .. tostring(title) .. ": " .. tostring(content))
-    end)
+    local message = tostring(content)
+    if WindUI then
+        pcall(function() WindUI:Notify({Title = tostring(title), Content = message, Duration = 3, Icon = "info"}) end)
+    else
+        warn("[Trail Companion] " .. tostring(title) .. ": " .. message)
+    end
 end
 
 local function callNet(name, ...)
@@ -188,44 +196,47 @@ local function setInfiniteStamina(enabled)
     end)
 end
 
-local Luna = loadstring(game:HttpGet("https://raw.githubusercontent.com/Nebula-Softworks/Luna-Interface-Suite/refs/heads/master/source.lua", true))()
-Window = Luna:CreateWindow({
-    Name = "Dino Trail Companion",
-    LogoID = "6031097225",
-    Subtitle = "Stamina • Zones • Performance • Safety",
-    LoadingEnabled = true,
-    LoadingTitle = "Trail Companion",
-    LoadingSubtitle = "Reading game modules...",
-    ConfigSettings = {RootFolder = nil, ConfigFolder = "DinoTrailCompanion"},
-    KeySystem = false,
+WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+Window = WindUI:CreateWindow({
+    Title = "Dino Trail Companion",
+    Icon = "paw-print",
+    Author = "Ride a Dino • Stamina, routes, safety, and dino tracking",
+    Folder = "DinoTrailCompanion",
+    Size = UDim2.fromOffset(780, 590),
+    MinSize = Vector2.new(620, 440),
+    MaxSize = Vector2.new(1000, 760),
+    Theme = "Dark",
+    ToggleKey = Enum.KeyCode.RightControl,
+    Resizable = true,
+    HideSearchBar = false,
+    Acrylic = true,
+    NewElements = true,
+    OpenButton = {Enabled = true, Title = "Open Dino Companion", Icon = "paw-print", OnlyMobile = false, Draggable = true},
 })
 
-local Stamina = Window:CreateTab({Name = "Stamina", Icon = "6035121907", ImageSource = "Custom", ShowTitle = true})
-Stamina:CreateSection("Grip management")
-Stamina:CreateParagraph({Title = "Stamina is Grip", Text = "The live stats expose Grip as an absolute amount, with no maximum/cap field. Auto-train therefore uses an absolute Grip threshold; a 100% setting cannot be calculated from the game data currently exposed. Training requests use the normal machine path and remain server-validated."})
-Stamina:CreateButton({Name = "Mount Training Machine", Description = "Requests a normal machine mount at your current position.", Callback = function()
+local Stamina = Window:Tab({Title = "Stamina", Icon = "battery-charging"})
+Stamina:Button({Title = "Mount Training Machine", Desc = "Requests a normal machine mount at your current position.", Callback = function()
     callNet("machineMount")
 end})
-Stamina:CreateButton({Name = "Dismount Training Machine", Description = "Uses the game's normal machine dismount request.", Callback = function()
+Stamina:Button({Title = "Dismount Training Machine", Desc = "Uses the game's normal machine dismount request.", Callback = function()
     callNet("machineDismount", "manual")
 end})
-Stamina:CreateToggle({Name = "Maintain Grip Automatically", Description = "Requests the training machine when Grip falls below the threshold.", CurrentValue = false, Callback = function(value)
+Stamina:Toggle({Title = "Maintain Grip Automatically", Desc = "Requests the training machine when Grip falls below the threshold.", Value = false, Callback = function(value)
     State.AutoTrain = value
 end})
-Stamina:CreateSlider({Name = "Train Below Grip", Range = {5, 80}, Increment = 5, CurrentValue = 20, Callback = function(value)
+Stamina:Slider({Title = "Train Below Grip", Value = {Min = 5, Max = 80, Default = 20}, Step = 5, Callback = function(value)
     State.TrainThreshold = value
 end})
-Stamina:CreateToggle({Name = "Infinite Stamina / Grip", Description = "Keeps the client Tame module's grip drain at zero and extends its ride budget. This is client-side and the game may override or reject it.", CurrentValue = true, Callback = setInfiniteStamina})
+Stamina:Toggle({Title = "Infinite Stamina / Grip", Desc = "Keeps the client Tame module's grip drain at zero and extends its ride budget. This is client-side and the game may override or reject it.", Value = true, Callback = setInfiniteStamina})
 
-local Zones = Window:CreateTab({Name = "Zones", Icon = "6023426941", ImageSource = "Custom", ShowTitle = true})
-Zones:CreateSection("Course navigation")
+local Zones = Window:Tab({Title = "Zones", Icon = "map"})
 local Options = stageNames()
 if #Options == 0 then Options = {"Track data unavailable"} end
 State.Zone = Options[1]
-Zones:CreateDropdown({Name = "Destination", Options = Options, CurrentOption = {State.Zone}, MultipleOptions = false, Callback = function(value)
+Zones:Dropdown({Title = "Destination", Options = Options, CurrentOption = {State.Zone}, MultipleOptions = false, Callback = function(value)
     State.Zone = type(value) == "table" and value[1] or value
 end})
-Zones:CreateButton({Name = "Go to Selected Zone", Description = "Uses Ride.teleportTo with the zone's start coordinate from Track.Stages.", Callback = function()
+Zones:Button({Title = "Go to Selected Zone", Desc = "Uses Ride.teleportTo with the zone's start coordinate from Track.Stages.", Callback = function()
     if not (Track and Ride and type(Ride.teleportTo) == "function") then
         notify("Navigation unavailable", "Track stages or Ride.teleportTo could not be resolved.")
         return
@@ -239,10 +250,8 @@ Zones:CreateButton({Name = "Go to Selected Zone", Description = "Uses Ride.telep
     end
     notify("Zone unavailable", "The selected stage is not present in Track.Stages.")
 end})
-Zones:CreateParagraph({Title = "Stage data", Text = "Destinations are loaded from the game's Track configuration, including the repeated Plains segment. If zone travel is locked or unavailable, the game handles that response."})
 
-local Performance = Window:CreateTab({Name = "Performance", Icon = "6026681578", ImageSource = "Custom", ShowTitle = true})
-Performance:CreateSection("Local graphics")
+local Performance = Window:Tab({Title = "Performance", Icon = "gauge"})
 local original = {shadows = Lighting.GlobalShadows, parts = {}, decals = {}, effects = {}}
 local function setLowGraphics(enabled)
     State.LowGraphics = enabled
@@ -275,8 +284,8 @@ local function setLowGraphics(enabled)
         end
     end
 end
-Performance:CreateToggle({Name = "Lightweight Graphics", Description = "Locally reduces shadows, textures, and effects. Turning it off restores recorded values.", CurrentValue = false, Callback = setLowGraphics})
-Performance:CreateToggle({Name = "Hide Stampede and Other Riders", Description = "Locally hides the game's herd and peer models; does not change server state.", CurrentValue = false, Callback = function(enabled)
+Performance:Toggle({Title = "Lightweight Graphics", Desc = "Locally reduces shadows, textures, and effects. Turning it off restores recorded values.", Value = false, Callback = setLowGraphics})
+Performance:Toggle({Title = "Hide Stampede and Other Riders", Desc = "Locally hides the game's herd and peer models; does not change server state.", Value = false, Callback = function(enabled)
     State.HidePeers = enabled
     for _, folderName in ipairs({"StampedeHerd", "RideADinoPeers"}) do
         local folder = workspace:FindFirstChild(folderName)
@@ -287,76 +296,95 @@ Performance:CreateToggle({Name = "Hide Stampede and Other Riders", Description =
         end
     end
 end})
-Performance:CreateButton({Name = "Restore Graphics", Description = "Restores local graphics values recorded by this panel.", Callback = function()
+Performance:Button({Title = "Restore Graphics", Desc = "Restores local graphics values recorded by this panel.", Callback = function()
     setLowGraphics(false)
     notify("Performance", "Recorded graphics values restored.")
 end})
 
-local Safety = Window:CreateTab({Name = "Safety", Icon = "6035078889", ImageSource = "Custom", ShowTitle = true})
-Safety:CreateSection("Fall awareness and recovery")
-Safety:CreateParagraph({Title = "How the safety options work", Text = "Auto Fall Save watches for a fast descent near the ground and moves you above the nearest loaded dinosaur within 120 studs. Lane Guard warns when your character is close to a course edge. This is a client-side position change and can be rejected by the game."})
-Safety:CreateToggle({Name = "Auto Fall Save", Description = "On by default. When a fast fall is about to land, moves you onto the nearest loaded dinosaur within 120 studs.", CurrentValue = true, Callback = function(value)
+local Safety = Window:Tab({Title = "Safety", Icon = "shield-check"})
+Safety:Toggle({Title = "Auto Fall Save", Desc = "On by default. When a fast fall is about to land, moves you onto the nearest loaded dinosaur within 120 studs.", Value = true, Callback = function(value)
     State.AutoFallSave = value
 end})
-Safety:CreateToggle({Name = "Lane-edge Warning", Description = "Warns when your character approaches the current stage's course edge.", CurrentValue = false, Callback = function(value)
+Safety:Slider({Title = "Fall Save Range (studs)", Desc = "Maximum radius to search for a nearby dinosaur during a fall.", Value = {Min = 30, Max = 250, Default = State.FallSaveRadius}, Step = 10, Callback = function(value)
+    State.FallSaveRadius = value
+end})
+Safety:Toggle({Title = "Lane-edge Warning", Desc = "Warns when your character approaches the current stage's course edge.", Value = false, Callback = function(value)
     State.LaneGuard = value
 end})
 
-Safety:CreateToggle({Name = "Camera Lock During a Leap", Description = "Keeps the game's camera lock enabled when the native ride module says it is available.", CurrentValue = false, Callback = function(value)
+Safety:Toggle({Title = "Camera Lock During a Leap", Desc = "Keeps the game's camera lock enabled when the native ride module says it is available.", Value = false, Callback = function(value)
     State.CameraLock = value
     if Ride and type(Ride.cameraLockAvailable) == "function" and type(Ride.setCameraLock) == "function" then
         pcall(function() if value and Ride.cameraLockAvailable() then Ride.setCameraLock(true) end end)
     end
 end})
 
-local Upgrades = Window:CreateTab({Name = "Upgrades", Icon = "6031225815", ImageSource = "Custom", ShowTitle = true})
-Upgrades:CreateSection("Server-validated purchases")
-Upgrades:CreateToggle({Name = "Auto-buy Next Dummy Tier", Description = "Uses NetBridge.buy for the next tier; affordability and unlock checks remain server-side.", CurrentValue = false, Callback = function(value)
+local Upgrades = Window:Tab({Title = "Upgrades", Icon = "trending-up"})
+Upgrades:Toggle({Title = "Auto-buy Next Dummy Tier", Desc = "Uses NetBridge.buy for the next tier; affordability and unlock checks remain server-side.", Value = false, Callback = function(value)
     State.AutoDummy = value
 end})
-Upgrades:CreateToggle({Name = "Auto-upgrade Main Pen", Description = "Requests the normal level-one pen upgrade every 10 seconds while enabled.", CurrentValue = false, Callback = function(value)
+Upgrades:Toggle({Title = "Auto-upgrade Main Pen", Desc = "Requests the normal level-one pen upgrade every 10 seconds while enabled.", Value = false, Callback = function(value)
     State.AutoPen = value
 end})
-Upgrades:CreateButton({Name = "Buy Next Dummy Tier Once", Description = "Requests the next tier using the game's NetBridge helper.", Callback = function()
+Upgrades:Button({Title = "Buy Next Dummy Tier Once", Desc = "Requests the next tier using the game's NetBridge helper.", Callback = function()
     local current = stats()
     local tier = current and (current.dummyTier or current.dummyLevel) or 1
     callNet("buy", (tonumber(tier) or 1) + 1)
 end})
-Upgrades:CreateButton({Name = "Upgrade Main Pen Once", Description = "Requests the game's main pen upgrade.", Callback = function()
+Upgrades:Button({Title = "Upgrade Main Pen Once", Desc = "Requests the game's main pen upgrade.", Callback = function()
     callNet("penUpgrade", 1, 1, false)
 end})
 
-local QoL = Window:CreateTab({Name = "QoL", Icon = "6031265971", ImageSource = "Custom", ShowTitle = true})
-QoL:CreateSection("Rarity highlights")
+local QoL = Window:Tab({Title = "Dino Finder", Icon = "sparkles"})
 local RarityOptions = {}
 for _, rarity in ipairs(RarityOrder) do table.insert(RarityOptions, rarity) end
-table.insert(RarityOptions, "All")
+table.insert(RarityOptions, "All rarities")
 for rarity in pairs(FoundRarities) do
     local present = false
     for _, option in ipairs(RarityOptions) do if option == rarity then present = true break end end
     if not present then table.insert(RarityOptions, #RarityOptions, rarity) end
 end
-QoL:CreateDropdown({Name = "ESP Rarity", Options = RarityOptions, CurrentOption = {State.ESPRarity}, MultipleOptions = false, Callback = function(value)
-    State.ESPRarity = type(value) == "table" and value[1] or value
+QoL:Dropdown({Title = "Rarities", Desc = "Search and select one or more live rarity tiers.", Values = RarityOptions, Value = State.ESPRarities, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
+    State.ESPRarities = type(value) == "table" and value or {value}
 end})
 local MutationOptions = {"Any"}
 for _, mutation in ipairs(MutationOrder) do table.insert(MutationOptions, mutation) end
-QoL:CreateDropdown({Name = "ESP Mutation", Options = MutationOptions, CurrentOption = {State.ESPMutation}, MultipleOptions = false, Callback = function(value)
-    State.ESPMutation = type(value) == "table" and value[1] or value
+QoL:Dropdown({Title = "Mutations", Desc = "Select Any or one or more mutation types.", Values = MutationOptions, Value = State.ESPMutations, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
+    State.ESPMutations = type(value) == "table" and value or {value}
 end})
-QoL:CreateToggle({Name = "Highlight Selected Rarity", Description = "Locally highlights streamed dinosaur models matching the selected rarity.", CurrentValue = false, Callback = function(value)
+local SpeciesOptions = {"All species"}
+local speciesSeen = {}
+for species in pairs(RarityBySpecies) do
+    if not speciesSeen[species] then
+        speciesSeen[species] = true
+        table.insert(SpeciesOptions, species)
+    end
+end
+table.sort(SpeciesOptions, function(a, b)
+    if a == "All species" then return true end
+    if b == "All species" then return false end
+    return a:lower() < b:lower()
+end)
+QoL:Dropdown({Title = "Dinosaur Species", Desc = "Search the live roster and select one or more species.", Values = SpeciesOptions, Value = State.ESPSpecies, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
+    State.ESPSpecies = type(value) == "table" and value or {value}
+end})
+QoL:Slider({Title = "ESP Range (studs)", Value = {Min = 50, Max = 1500, Default = State.ESPRadius}, Step = 50, Callback = function(value)
+    State.ESPRadius = value
+end})
+QoL:Toggle({Title = "Show Dino Labels", Desc = "Shows species, rarity, and mutation above each matching model.", Value = State.ESPLabels, Callback = function(value)
+    State.ESPLabels = value
+end})
+QoL:Toggle({Title = "Highlight Matching Dinosaurs", Desc = "Highlights streamed models that match all selected filters.", Value = false, Callback = function(value)
     State.RarityESP = value
 end})
-QoL:CreateSection("Rewards")
-QoL:CreateToggle({Name = "Auto-claim Gifts", Description = "Checks timed gifts at a low rate using the NetBridge helper.", CurrentValue = false, Callback = function(value)
+QoL:Toggle({Title = "Auto-claim Gifts", Desc = "Checks timed gifts at a low rate using the NetBridge helper.", Value = false, Callback = function(value)
     State.AutoGifts = value
 end})
-QoL:CreateToggle({Name = "Auto-claim Offline Income", Description = "Checks offline income at a low rate using the NetBridge helper.", CurrentValue = false, Callback = function(value)
+QoL:Toggle({Title = "Auto-claim Offline Income", Desc = "Checks offline income at a low rate using the NetBridge helper.", Value = false, Callback = function(value)
     State.AutoOffline = value
 end})
-QoL:CreateButton({Name = "Claim Gifts Now", Callback = function() callNet("giftClaim", true) end})
-QoL:CreateButton({Name = "Claim Offline Income Now", Callback = function() callNet("offlineClaim") end})
-QoL:CreateParagraph({Title = "Status", Text = "Grip: reading… • Stage: " .. tostring(State.Zone)})
+QoL:Button({Title = "Claim Gifts Now", Callback = function() callNet("giftClaim", true) end})
+QoL:Button({Title = "Claim Offline Income Now", Callback = function() callNet("offlineClaim") end})
 
 -- Known Secret species are a fallback for models without a rarity attribute.
 local SecretSpecies = {
@@ -370,6 +398,7 @@ local SecretSpecies = {
     ["Skeletal Rex"] = true,
 }
 local RarityHighlights = {}
+local RarityLabels = {}
 local function speciesId(model)
     for _, key in ipairs({"RunSpecies", "Species", "DinoId", "dinoId", "species", "dino", "spec", "specimen", "id"}) do
         local value = model:GetAttribute(key)
@@ -416,11 +445,26 @@ local function modelMutation(model)
     return "None"
 end
 
+local function hasSelection(values, wanted)
+    if type(values) ~= "table" then return values == wanted end
+    for key, value in pairs(values) do
+        if value == wanted or (key == wanted and value == true) then return true end
+    end
+    return false
+end
+
 local function matchesSelectedRarity(model)
     local rarity = modelRarity(model)
-    local matchesRarity = rarity ~= nil and (State.ESPRarity == "All" or rarity == State.ESPRarity)
-    local matchesMutation = State.ESPMutation == "Any" or modelMutation(model) == State.ESPMutation
-    return matchesRarity and matchesMutation
+    local matchesRarity = rarity ~= nil and (hasSelection(State.ESPRarities, "All rarities") or hasSelection(State.ESPRarities, rarity))
+    local matchesMutation = hasSelection(State.ESPMutations, "Any") or hasSelection(State.ESPMutations, modelMutation(model))
+    local species = speciesId(model)
+    local matchesSpecies = hasSelection(State.ESPSpecies, "All species") or hasSelection(State.ESPSpecies, species)
+    if not (matchesRarity and matchesMutation and matchesSpecies) then return false end
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    local ok, position = pcall(function() return model:GetPivot().Position end)
+    return ok and (position - root.Position).Magnitude <= State.ESPRadius
 end
 
 local function isDinoModel(model)
@@ -447,12 +491,18 @@ local function refreshRarityHighlights()
             RarityHighlights[model] = nil
         end
     end
+    for model, label in pairs(RarityLabels) do
+        if not model.Parent or not State.RarityESP or not State.ESPLabels or not matchesSelectedRarity(model) then
+            label:Destroy()
+            RarityLabels[model] = nil
+        end
+    end
     if not State.RarityESP then return end
     for index, object in ipairs(workspace:GetDescendants()) do
         if index % 500 == 0 then task.wait() end
         if object:IsA("Model") and matchesSelectedRarity(object) and not RarityHighlights[object] then
             local mark = Instance.new("Highlight")
-            mark.Name = "TrailCompanionRarityHighlight"
+            mark.Title = "TrailCompanionRarityHighlight"
             mark.Adornee = object
             local color = RarityColors[modelRarity(object)] or Color3.fromRGB(255, 255, 255)
             mark.FillColor = color
@@ -462,6 +512,29 @@ local function refreshRarityHighlights()
             mark.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             mark.Parent = object
             RarityHighlights[object] = mark
+        end
+        if object:IsA("Model") and matchesSelectedRarity(object) and State.ESPLabels and not RarityLabels[object] then
+            local adornee = object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
+            if adornee then
+                local label = Instance.new("BillboardGui")
+                label.Name = "TrailCompanionDinoLabel"
+                label.Adornee = adornee
+                label.Size = UDim2.fromOffset(220, 44)
+                label.StudsOffset = Vector3.new(0, 4, 0)
+                label.AlwaysOnTop = true
+                label.Parent = object
+                local text = Instance.new("TextLabel")
+                text.BackgroundTransparency = 1
+                text.Size = UDim2.fromScale(1, 1)
+                text.Font = Enum.Font.GothamSemibold
+                text.TextSize = 13
+                text.TextColor3 = RarityColors[modelRarity(object)] or Color3.new(1, 1, 1)
+                text.TextStrokeTransparency = 0.25
+                text.TextWrapped = true
+                text.Text = string.format("%s  •  %s\n%s", object.Name, tostring(modelRarity(object) or "Unknown"), modelMutation(object))
+                text.Parent = label
+                RarityLabels[object] = label
+            end
         end
     end
 end
@@ -489,7 +562,7 @@ local function tryFallSave()
     if not rayOk or not ground or ground.Distance > 22 then return end
 
     lastFallSaveAttempt = now
-    local closestModel, closestDistance, closestBox, closestSize = nil, 120, nil, nil
+    local closestModel, closestDistance, closestBox, closestSize = nil, State.FallSaveRadius, nil, nil
     for _, object in ipairs(workspace:GetDescendants()) do
         if object:IsA("Model") and object ~= character and isDinoModel(object) then
             local ok, box, size = pcall(function() return object:GetBoundingBox() end)
