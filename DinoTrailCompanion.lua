@@ -1,5 +1,5 @@
--- Ride a Dino | Luna gameplay companion
--- Uses game client modules and their normal request paths. Luna was discontinued in April 2025.
+-- Ride a Dino | WindUI gameplay companion
+-- Uses game client modules and normal request paths; WindUI provides the interface.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -233,7 +233,7 @@ local Zones = Window:Tab({Title = "Zones", Icon = "map"})
 local Options = stageNames()
 if #Options == 0 then Options = {"Track data unavailable"} end
 State.Zone = Options[1]
-Zones:Dropdown({Title = "Destination", Options = Options, CurrentOption = {State.Zone}, MultipleOptions = false, Callback = function(value)
+Zones:Dropdown({Title = "Destination", Values = Options, Value = State.Zone, Multi = false, SearchBarEnabled = true, Callback = function(value)
     State.Zone = type(value) == "table" and value[1] or value
 end})
 Zones:Button({Title = "Go to Selected Zone", Desc = "Uses Ride.teleportTo with the zone's start coordinate from Track.Stages.", Callback = function()
@@ -345,12 +345,23 @@ for rarity in pairs(FoundRarities) do
     if not present then table.insert(RarityOptions, #RarityOptions, rarity) end
 end
 QoL:Dropdown({Title = "Rarities", Desc = "Search and select one or more live rarity tiers.", Values = RarityOptions, Value = State.ESPRarities, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
-    State.ESPRarities = type(value) == "table" and value or {value}
+    State.ESPRarities = normalizeFilterSelection(value, "All rarities")
 end})
+local function normalizeFilterSelection(value, sentinel)
+    local selected = type(value) == "table" and value or {value}
+    local hasSentinel = false
+    local result = {}
+    for _, choice in pairs(selected) do
+        if choice == sentinel then hasSentinel = true else table.insert(result, choice) end
+    end
+    if hasSentinel then return {sentinel} end
+    return result
+end
+
 local MutationOptions = {"Any"}
 for _, mutation in ipairs(MutationOrder) do table.insert(MutationOptions, mutation) end
 QoL:Dropdown({Title = "Mutations", Desc = "Select Any or one or more mutation types.", Values = MutationOptions, Value = State.ESPMutations, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
-    State.ESPMutations = type(value) == "table" and value or {value}
+    State.ESPMutations = normalizeFilterSelection(value, "Any")
 end})
 local SpeciesOptions = {"All species"}
 local speciesSeen = {}
@@ -361,12 +372,13 @@ for species in pairs(RarityBySpecies) do
     end
 end
 table.sort(SpeciesOptions, function(a, b)
+    if a == b then return false end
     if a == "All species" then return true end
     if b == "All species" then return false end
     return a:lower() < b:lower()
 end)
 QoL:Dropdown({Title = "Dinosaur Species", Desc = "Search the live roster and select one or more species.", Values = SpeciesOptions, Value = State.ESPSpecies, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
-    State.ESPSpecies = type(value) == "table" and value or {value}
+    State.ESPSpecies = normalizeFilterSelection(value, "All species")
 end})
 QoL:Slider({Title = "ESP Range (studs)", Value = {Min = 50, Max = 1500, Default = State.ESPRadius}, Step = 50, Callback = function(value)
     State.ESPRadius = value
