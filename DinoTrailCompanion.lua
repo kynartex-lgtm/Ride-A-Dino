@@ -564,7 +564,7 @@ local function refreshRarityHighlights()
         end
     end
     for model, label in pairs(RarityLabels) do
-        if not model.Parent or not State.RarityESP or not State.ESPLabels or not matchesSelectedRarity(model) then
+        if not model.Parent or not State.ESPLabels or not matchesSelectedRarity(model) then
             label:Destroy()
             RarityLabels[model] = nil
         end
