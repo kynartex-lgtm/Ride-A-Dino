@@ -7,7 +7,7 @@ A Ride a Dino gameplay companion using the WindUI interface (currently in beta).
 - Stamina and Grip controls, including optional client-side Grip maintenance and automatic training requests.
 - Searchable zone selector populated from the game's loaded track configuration.
 - Local graphics optimization with recorded-value restoration, plus herd/player visibility controls.
-- Automatic dummy and pen upgrade requests with server-side affordability and unlock checks.
+- Optional all-in-one auto progression that coordinates Grip training, dummy/pen upgrade requests, and reward claims through normal game modules, with server-side affordability and unlock checks.
 - Gift and offline-income claim controls.
 - A searchable multi-select dinosaur finder: choose any rarity tier (including Eternal and Divine), mutation, and species from the live roster.
 - Highlight colors, optional species/rarity/mutation labels, and adjustable ESP range.
