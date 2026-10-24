@@ -60,6 +60,7 @@ collectRarities(DinosConfig, nil, {})
 
 local State = {
     AutoTrain = false,
+    AutoProgression = false,
     TrainThreshold = 20,
     InfiniteStamina = true,
     AutoDummy = false,
@@ -320,6 +321,10 @@ Safety:Toggle({Title = "Camera Lock During a Leap", Desc = "Keeps the game's cam
 end})
 
 local Upgrades = Window:Tab({Title = "Upgrades", Icon = "trending-up"})
+Upgrades:Toggle({Title = "All-in-One Auto Progression", Desc = "Combines low-Grip training, next dummy tier, main pen upgrades, gifts, and offline-income claims through normal game requests. Server checks still apply.", Value = false, Callback = function(value)
+    State.AutoProgression = value
+    notify("Auto progression", value and "Progression routines enabled." or "Progression routines paused.")
+end})
 Upgrades:Toggle({Title = "Auto-buy Next Dummy Tier", Desc = "Uses NetBridge.buy for the next tier; affordability and unlock checks remain server-side.", Value = false, Callback = function(value)
     State.AutoDummy = value
 end})
@@ -617,24 +622,24 @@ task.spawn(function()
         if not State.RarityESP and next(RarityHighlights) then
             refreshRarityHighlights()
         end
-        if State.AutoTrain and now - lastTrain >= 8 and current and tonumber(current.grip) and current.grip <= State.TrainThreshold then
+        if (State.AutoProgression or State.AutoTrain) and now - lastTrain >= 8 and current and tonumber(current.grip) and current.grip <= State.TrainThreshold then
             lastTrain = now
             callNet("machineMount")
         end
-        if State.AutoDummy and current and now - lastDummy >= 5 then
+        if (State.AutoProgression or State.AutoDummy) and current and now - lastDummy >= (State.AutoProgression and 15 or 5) then
             lastDummy = now
             local tier = tonumber(current.dummyTier or current.dummyLevel) or 1
             if tier < 10 then callNet("buy", tier + 1) end
         end
-        if State.AutoPen and now - lastPen >= 10 then
+        if (State.AutoProgression or State.AutoPen) and now - lastPen >= (State.AutoProgression and 30 or 10) then
             lastPen = now
             callNet("penUpgrade", 1, 1, false)
         end
-        if State.AutoGifts and now - lastGift >= 30 then
+        if (State.AutoProgression or State.AutoGifts) and now - lastGift >= (State.AutoProgression and 60 or 30) then
             lastGift = now
             callNet("giftClaim", true)
         end
-        if State.AutoOffline and now - lastOffline >= 45 then
+        if (State.AutoProgression or State.AutoOffline) and now - lastOffline >= (State.AutoProgression and 60 or 45) then
             lastOffline = now
             callNet("offlineClaim")
         end
