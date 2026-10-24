@@ -302,7 +302,7 @@ Performance:Button({Title = "Restore Graphics", Desc = "Restores local graphics 
 end})
 
 local Safety = Window:Tab({Title = "Safety", Icon = "shield-check"})
-Safety:Toggle({Title = "Auto Fall Save", Desc = "On by default. When a fast fall is about to land, moves you onto the nearest loaded dinosaur within 120 studs.", Value = true, Callback = function(value)
+Safety:Toggle({Title = "Auto Fall Save", Desc = "On by default. Saves a fast fall by moving above the nearest loaded dinosaur inside the configurable radius.", Value = true, Callback = function(value)
     State.AutoFallSave = value
 end})
 Safety:Slider({Title = "Fall Save Range (studs)", Desc = "Maximum radius to search for a nearby dinosaur during a fall.", Value = {Min = 30, Max = 250, Default = State.FallSaveRadius}, Step = 10, Callback = function(value)
