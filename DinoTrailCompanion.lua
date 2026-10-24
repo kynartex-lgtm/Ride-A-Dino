@@ -343,6 +343,24 @@ Upgrades:Button({Title = "Upgrade Main Pen Once", Desc = "Requests the game's ma
 end})
 
 local QoL = Window:Tab({Title = "Dino Finder", Icon = "sparkles"})
+local function normalizeFilterSelection(value, sentinel)
+    local selected = type(value) == "table" and value or {value}
+    local hasSentinel = false
+    local result = {}
+    for key, item in pairs(selected) do
+        local choice = item == true and type(key) == "string" and key or item
+        if type(choice) == "string" then
+            if choice == sentinel then
+                hasSentinel = true
+            else
+                table.insert(result, choice)
+            end
+        end
+    end
+    if hasSentinel then return {sentinel} end
+    return result
+end
+
 local RarityOptions = {}
 for _, rarity in ipairs(RarityOrder) do table.insert(RarityOptions, rarity) end
 table.insert(RarityOptions, "All rarities")
@@ -354,16 +372,6 @@ end
 QoL:Dropdown({Title = "Rarities", Flag = "Rarities", Desc = "Search and select one or more live rarity tiers.", Values = RarityOptions, Value = State.ESPRarities, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
     State.ESPRarities = normalizeFilterSelection(value, "All rarities")
 end})
-local function normalizeFilterSelection(value, sentinel)
-    local selected = type(value) == "table" and value or {value}
-    local hasSentinel = false
-    local result = {}
-    for _, choice in pairs(selected) do
-        if choice == sentinel then hasSentinel = true else table.insert(result, choice) end
-    end
-    if hasSentinel then return {sentinel} end
-    return result
-end
 
 local MutationOptions = {"Any"}
 for _, mutation in ipairs(MutationOrder) do table.insert(MutationOptions, mutation) end
@@ -561,12 +569,12 @@ local function refreshRarityHighlights()
             RarityLabels[model] = nil
         end
     end
-    if not State.RarityESP then return end
+    if not State.RarityESP and not State.ESPLabels then return end
     for index, object in ipairs(workspace:GetDescendants()) do
         if index % 500 == 0 then task.wait() end
-        if object:IsA("Model") and matchesSelectedRarity(object) and not RarityHighlights[object] then
+        if State.RarityESP and object:IsA("Model") and matchesSelectedRarity(object) and not RarityHighlights[object] then
             local mark = Instance.new("Highlight")
-            mark.Title = "TrailCompanionRarityHighlight"
+            mark.Name = "TrailCompanionRarityHighlight"
             mark.Adornee = object
             local color = RarityColors[modelRarity(object)] or Color3.fromRGB(255, 255, 255)
             mark.FillColor = color
@@ -577,7 +585,7 @@ local function refreshRarityHighlights()
             mark.Parent = object
             RarityHighlights[object] = mark
         end
-        if object:IsA("Model") and matchesSelectedRarity(object) and State.ESPLabels and not RarityLabels[object] then
+        if State.ESPLabels and object:IsA("Model") and matchesSelectedRarity(object) and not RarityLabels[object] then
             local adornee = object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
             if adornee then
                 local label = Instance.new("BillboardGui")
@@ -662,11 +670,11 @@ task.spawn(function()
     while task.wait(0.5) do
         local now = os.clock()
         local current = stats()
-        if State.RarityESP and now - lastSecretScan >= 3 then
+        if (State.RarityESP or State.ESPLabels) and now - lastSecretScan >= 3 then
             lastSecretScan = now
             refreshRarityHighlights()
         end
-        if not State.RarityESP and next(RarityHighlights) then
+        if not State.RarityESP and not State.ESPLabels and (next(RarityHighlights) or next(RarityLabels)) then
             refreshRarityHighlights()
         end
         if State.AutoTrain and now - lastTrain >= 8 and current and tonumber(current.grip) and current.grip <= State.TrainThreshold then
@@ -720,6 +728,7 @@ task.spawn(function()
 end)
 
 warn("[Trail Companion] Loaded from the game's Track, Ride, and NetBridge modules.")
+
 
 
 
