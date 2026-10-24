@@ -9,14 +9,15 @@ A Lua gameplay companion UI for Ride a Dino, built with the Luna Interface Suite
 - Local graphics options to reduce visual effects and hide streamed herd/player models.
 - Optional automatic dummy and pen upgrade requests.
 - Quality-of-life gift and offline income claim controls.
-- An ESP rarity chooser for Common, Uncommon, Rare, Epic, Legendary, Mythic, Secret, or all rarities. It uses streamed model attributes and the loaded dinosaur config when available.
+- An ESP rarity chooser for Common, Uncommon, Rare, Epic, Legendary, Mythic, Cosmic, Secret, Eternal, Divine, or all rarities, plus a mutation filter for Any, None, Silver, Golden, Rainbow, Magma, or Spectral.
+- Default-on fall save that moves the character above the nearest loaded dinosaur within 120 studs when a fast descent is about to land.
 - Safety helpers including lane-edge warnings and camera lock during supported leaps.
 
 ## Requirements
 
 - Roblox with the Ride a Dino client modules available.
 - A compatible environment capable of running the script’s Lua and loading the Luna UI library.
-- The relevant game modules and remotes must be available to the client. Game-side validation and updates can change or disable features.
+- The relevant game modules and remotes must be available to the client. Game-side validation and updates can change or disable features. The fall save changes local character position and may be rejected by the game.
 
 ## Use
 
