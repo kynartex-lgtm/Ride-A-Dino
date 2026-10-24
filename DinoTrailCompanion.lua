@@ -60,7 +60,6 @@ collectRarities(DinosConfig, nil, {})
 
 local State = {
     AutoTrain = false,
-    AutoProgression = false,
     TrainThreshold = 20,
     InfiniteStamina = true,
     AutoDummy = false,
@@ -215,6 +214,13 @@ Window = WindUI:CreateWindow({
     OpenButton = {Enabled = true, Title = "Open Dino Companion", Icon = "paw-print", OnlyMobile = false, Draggable = true},
 })
 
+local ConfigManager = Window.ConfigManager
+local ConfigManagerReady = false
+if ConfigManager and type(ConfigManager.Init) == "function" then
+    local ok, result = pcall(function() return ConfigManager:Init(Window) end)
+    ConfigManagerReady = ok and result ~= false
+end
+
 local Stamina = Window:Tab({Title = "Stamina", Icon = "battery-charging"})
 Stamina:Button({Title = "Mount Training Machine", Desc = "Requests a normal machine mount at your current position.", Callback = function()
     callNet("machineMount")
@@ -222,19 +228,19 @@ end})
 Stamina:Button({Title = "Dismount Training Machine", Desc = "Uses the game's normal machine dismount request.", Callback = function()
     callNet("machineDismount", "manual")
 end})
-Stamina:Toggle({Title = "Maintain Grip Automatically", Desc = "Requests the training machine when Grip falls below the threshold.", Value = false, Callback = function(value)
+Stamina:Toggle({Title = "Maintain Grip Automatically", Flag = "MaintainGripAutomatically", Desc = "Requests the training machine when Grip falls below the threshold.", Value = false, Callback = function(value)
     State.AutoTrain = value
 end})
-Stamina:Slider({Title = "Train Below Grip", Value = {Min = 5, Max = 80, Default = 20}, Step = 5, Callback = function(value)
+Stamina:Slider({Title = "Train Below Grip", Flag = "TrainBelowGrip", Value = {Min = 5, Max = 80, Default = 20}, Step = 5, Callback = function(value)
     State.TrainThreshold = value
 end})
-Stamina:Toggle({Title = "Infinite Stamina / Grip", Desc = "Keeps the client Tame module's grip drain at zero and extends its ride budget. This is client-side and the game may override or reject it.", Value = true, Callback = setInfiniteStamina})
+Stamina:Toggle({Title = "Infinite Stamina / Grip", Flag = "InfiniteStaminaGrip", Desc = "Keeps the client Tame module's grip drain at zero and extends its ride budget. This is client-side and the game may override or reject it.", Value = true, Callback = setInfiniteStamina})
 
 local Zones = Window:Tab({Title = "Zones", Icon = "map"})
 local Options = stageNames()
 if #Options == 0 then Options = {"Track data unavailable"} end
 State.Zone = Options[1]
-Zones:Dropdown({Title = "Destination", Values = Options, Value = State.Zone, Multi = false, SearchBarEnabled = true, Callback = function(value)
+Zones:Dropdown({Title = "Destination", Flag = "Destination", Values = Options, Value = State.Zone, Multi = false, SearchBarEnabled = true, Callback = function(value)
     State.Zone = type(value) == "table" and value[1] or value
 end})
 Zones:Button({Title = "Go to Selected Zone", Desc = "Uses Ride.teleportTo with the zone's start coordinate from Track.Stages.", Callback = function()
@@ -285,8 +291,8 @@ local function setLowGraphics(enabled)
         end
     end
 end
-Performance:Toggle({Title = "Lightweight Graphics", Desc = "Locally reduces shadows, textures, and effects. Turning it off restores recorded values.", Value = false, Callback = setLowGraphics})
-Performance:Toggle({Title = "Hide Stampede and Other Riders", Desc = "Locally hides the game's herd and peer models; does not change server state.", Value = false, Callback = function(enabled)
+Performance:Toggle({Title = "Lightweight Graphics", Flag = "LightweightGraphics", Desc = "Locally reduces shadows, textures, and effects. Turning it off restores recorded values.", Value = false, Callback = setLowGraphics})
+Performance:Toggle({Title = "Hide Stampede and Other Riders", Flag = "HideStampedeandOtherRiders", Desc = "Locally hides the game's herd and peer models; does not change server state.", Value = false, Callback = function(enabled)
     State.HidePeers = enabled
     for _, folderName in ipairs({"StampedeHerd", "RideADinoPeers"}) do
         local folder = workspace:FindFirstChild(folderName)
@@ -303,17 +309,17 @@ Performance:Button({Title = "Restore Graphics", Desc = "Restores local graphics 
 end})
 
 local Safety = Window:Tab({Title = "Safety", Icon = "shield-check"})
-Safety:Toggle({Title = "Auto Fall Save", Desc = "On by default. Saves a fast fall by moving above the nearest loaded dinosaur inside the configurable radius.", Value = true, Callback = function(value)
+Safety:Toggle({Title = "Auto Fall Save", Flag = "AutoFallSave", Desc = "On by default. Saves a fast fall by moving above the nearest loaded dinosaur inside the configurable radius.", Value = true, Callback = function(value)
     State.AutoFallSave = value
 end})
-Safety:Slider({Title = "Fall Save Range (studs)", Desc = "Maximum radius to search for a nearby dinosaur during a fall.", Value = {Min = 30, Max = 250, Default = State.FallSaveRadius}, Step = 10, Callback = function(value)
+Safety:Slider({Title = "Fall Save Range (studs)", Flag = "FallSaveRangestuds", Desc = "Maximum radius to search for a nearby dinosaur during a fall.", Value = {Min = 30, Max = 250, Default = State.FallSaveRadius}, Step = 10, Callback = function(value)
     State.FallSaveRadius = value
 end})
-Safety:Toggle({Title = "Lane-edge Warning", Desc = "Warns when your character approaches the current stage's course edge.", Value = false, Callback = function(value)
+Safety:Toggle({Title = "Lane-edge Warning", Flag = "LaneedgeWarning", Desc = "Warns when your character approaches the current stage's course edge.", Value = false, Callback = function(value)
     State.LaneGuard = value
 end})
 
-Safety:Toggle({Title = "Camera Lock During a Leap", Desc = "Keeps the game's camera lock enabled when the native ride module says it is available.", Value = false, Callback = function(value)
+Safety:Toggle({Title = "Camera Lock During a Leap", Flag = "CameraLockDuringaLeap", Desc = "Keeps the game's camera lock enabled when the native ride module says it is available.", Value = false, Callback = function(value)
     State.CameraLock = value
     if Ride and type(Ride.cameraLockAvailable) == "function" and type(Ride.setCameraLock) == "function" then
         pcall(function() if value and Ride.cameraLockAvailable() then Ride.setCameraLock(true) end end)
@@ -321,14 +327,10 @@ Safety:Toggle({Title = "Camera Lock During a Leap", Desc = "Keeps the game's cam
 end})
 
 local Upgrades = Window:Tab({Title = "Upgrades", Icon = "trending-up"})
-Upgrades:Toggle({Title = "All-in-One Auto Progression", Desc = "Combines low-Grip training, next dummy tier, main pen upgrades, gifts, and offline-income claims through normal game requests. Server checks still apply.", Value = false, Callback = function(value)
-    State.AutoProgression = value
-    notify("Auto progression", value and "Progression routines enabled." or "Progression routines paused.")
-end})
-Upgrades:Toggle({Title = "Auto-buy Next Dummy Tier", Desc = "Uses NetBridge.buy for the next tier; affordability and unlock checks remain server-side.", Value = false, Callback = function(value)
+Upgrades:Toggle({Title = "Auto-buy Next Dummy Tier", Flag = "AutobuyNextDummyTier", Desc = "Uses NetBridge.buy for the next tier; affordability and unlock checks remain server-side.", Value = false, Callback = function(value)
     State.AutoDummy = value
 end})
-Upgrades:Toggle({Title = "Auto-upgrade Main Pen", Desc = "Requests the normal level-one pen upgrade every 10 seconds while enabled.", Value = false, Callback = function(value)
+Upgrades:Toggle({Title = "Auto-upgrade Main Pen", Flag = "AutoupgradeMainPen", Desc = "Requests the normal level-one pen upgrade every 10 seconds while enabled.", Value = false, Callback = function(value)
     State.AutoPen = value
 end})
 Upgrades:Button({Title = "Buy Next Dummy Tier Once", Desc = "Requests the next tier using the game's NetBridge helper.", Callback = function()
@@ -349,7 +351,7 @@ for rarity in pairs(FoundRarities) do
     for _, option in ipairs(RarityOptions) do if option == rarity then present = true break end end
     if not present then table.insert(RarityOptions, #RarityOptions, rarity) end
 end
-QoL:Dropdown({Title = "Rarities", Desc = "Search and select one or more live rarity tiers.", Values = RarityOptions, Value = State.ESPRarities, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
+QoL:Dropdown({Title = "Rarities", Flag = "Rarities", Desc = "Search and select one or more live rarity tiers.", Values = RarityOptions, Value = State.ESPRarities, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
     State.ESPRarities = normalizeFilterSelection(value, "All rarities")
 end})
 local function normalizeFilterSelection(value, sentinel)
@@ -365,7 +367,7 @@ end
 
 local MutationOptions = {"Any"}
 for _, mutation in ipairs(MutationOrder) do table.insert(MutationOptions, mutation) end
-QoL:Dropdown({Title = "Mutations", Desc = "Select Any or one or more mutation types.", Values = MutationOptions, Value = State.ESPMutations, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
+QoL:Dropdown({Title = "Mutations", Flag = "Mutations", Desc = "Select Any or one or more mutation types.", Values = MutationOptions, Value = State.ESPMutations, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
     State.ESPMutations = normalizeFilterSelection(value, "Any")
 end})
 local SpeciesOptions = {"All species"}
@@ -382,26 +384,71 @@ table.sort(SpeciesOptions, function(a, b)
     if b == "All species" then return false end
     return a:lower() < b:lower()
 end)
-QoL:Dropdown({Title = "Dinosaur Species", Desc = "Search the live roster and select one or more species.", Values = SpeciesOptions, Value = State.ESPSpecies, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
+QoL:Dropdown({Title = "Dinosaur Species", Flag = "DinosaurSpecies", Desc = "Search the live roster and select one or more species.", Values = SpeciesOptions, Value = State.ESPSpecies, Multi = true, SearchBarEnabled = true, AllowNone = true, Callback = function(value)
     State.ESPSpecies = normalizeFilterSelection(value, "All species")
 end})
-QoL:Slider({Title = "ESP Range (studs)", Value = {Min = 50, Max = 1500, Default = State.ESPRadius}, Step = 50, Callback = function(value)
+QoL:Slider({Title = "ESP Range (studs)", Flag = "ESPRangestuds", Value = {Min = 50, Max = 1500, Default = State.ESPRadius}, Step = 50, Callback = function(value)
     State.ESPRadius = value
 end})
-QoL:Toggle({Title = "Show Dino Labels", Desc = "Shows species, rarity, and mutation above each matching model.", Value = State.ESPLabels, Callback = function(value)
+QoL:Toggle({Title = "Show Dino Labels", Flag = "ShowDinoLabels", Desc = "Shows species, rarity, and mutation above each matching model.", Value = State.ESPLabels, Callback = function(value)
     State.ESPLabels = value
 end})
-QoL:Toggle({Title = "Highlight Matching Dinosaurs", Desc = "Highlights streamed models that match all selected filters.", Value = false, Callback = function(value)
+QoL:Toggle({Title = "Highlight Matching Dinosaurs", Flag = "HighlightMatchingDinosaurs", Desc = "Highlights streamed models that match all selected filters.", Value = false, Callback = function(value)
     State.RarityESP = value
 end})
-QoL:Toggle({Title = "Auto-claim Gifts", Desc = "Checks timed gifts at a low rate using the NetBridge helper.", Value = false, Callback = function(value)
+QoL:Toggle({Title = "Auto-claim Gifts", Flag = "AutoclaimGifts", Desc = "Checks timed gifts at a low rate using the NetBridge helper.", Value = false, Callback = function(value)
     State.AutoGifts = value
 end})
-QoL:Toggle({Title = "Auto-claim Offline Income", Desc = "Checks offline income at a low rate using the NetBridge helper.", Value = false, Callback = function(value)
+QoL:Toggle({Title = "Auto-claim Offline Income", Flag = "AutoclaimOfflineIncome", Desc = "Checks offline income at a low rate using the NetBridge helper.", Value = false, Callback = function(value)
     State.AutoOffline = value
 end})
 QoL:Button({Title = "Claim Gifts Now", Callback = function() callNet("giftClaim", true) end})
 QoL:Button({Title = "Claim Offline Income Now", Callback = function() callNet("offlineClaim") end})
+
+local Configs = Window:Tab({Title = "Configs", Icon = "save"})
+local ConfigName = "default"
+Configs:Input({Title = "Config name", Value = ConfigName, Callback = function(value)
+    local cleaned = tostring(value or ""):gsub("[^%w_-]", ""):sub(1, 32)
+    ConfigName = cleaned ~= "" and cleaned or "default"
+end})
+Configs:Button({Title = "Save Config", Desc = "Saves all flagged toggles, sliders, and dropdowns to a local JSON config.", Callback = function()
+    if not ConfigManagerReady then
+        notify("Configs unavailable", "This executor does not expose the file APIs WindUI needs.")
+        return
+    end
+    local ok, configOrError = pcall(function()
+        return ConfigManager:CreateConfig(ConfigName)
+    end)
+    if not ok or not configOrError then
+        notify("Config save failed", tostring(configOrError))
+        return
+    end
+    local saved, result = pcall(function() return configOrError:Save() end)
+    notify(saved and result and "Config saved" or "Config save failed", saved and ("Saved " .. ConfigName) or tostring(result))
+end})
+Configs:Button({Title = "Load Config", Desc = "Loads the named config and applies saved control values.", Callback = function()
+    if not ConfigManagerReady then
+        notify("Configs unavailable", "This executor does not expose the file APIs WindUI needs.")
+        return
+    end
+    local ok, configOrError = pcall(function()
+        return ConfigManager:CreateConfig(ConfigName)
+    end)
+    if not ok or not configOrError then
+        notify("Config load failed", tostring(configOrError))
+        return
+    end
+    local loaded, result = pcall(function() return configOrError:Load() end)
+    notify(loaded and result and "Config loaded" or "Config load failed", loaded and ("Loaded " .. ConfigName) or tostring(result))
+end})
+Configs:Button({Title = "Delete Config", Desc = "Deletes the named config if the executor supports file deletion.", Callback = function()
+    if not ConfigManagerReady or type(ConfigManager.DeleteConfig) ~= "function" then
+        notify("Delete unavailable", "Config deletion is not available in this executor.")
+        return
+    end
+    local ok, deleted, message = pcall(ConfigManager.DeleteConfig, ConfigManager, ConfigName)
+    notify(ok and deleted and "Config deleted" or "Delete failed", ok and tostring(message or ConfigName) or tostring(deleted))
+end})
 
 -- Known Secret species are a fallback for models without a rarity attribute.
 local SecretSpecies = {
@@ -622,24 +669,24 @@ task.spawn(function()
         if not State.RarityESP and next(RarityHighlights) then
             refreshRarityHighlights()
         end
-        if (State.AutoProgression or State.AutoTrain) and now - lastTrain >= 8 and current and tonumber(current.grip) and current.grip <= State.TrainThreshold then
+        if State.AutoTrain and now - lastTrain >= 8 and current and tonumber(current.grip) and current.grip <= State.TrainThreshold then
             lastTrain = now
             callNet("machineMount")
         end
-        if (State.AutoProgression or State.AutoDummy) and current and now - lastDummy >= (State.AutoProgression and 15 or 5) then
+        if State.AutoDummy and current and now - lastDummy >= 5 then
             lastDummy = now
             local tier = tonumber(current.dummyTier or current.dummyLevel) or 1
             if tier < 10 then callNet("buy", tier + 1) end
         end
-        if (State.AutoProgression or State.AutoPen) and now - lastPen >= (State.AutoProgression and 30 or 10) then
+        if State.AutoPen and now - lastPen >= 10 then
             lastPen = now
             callNet("penUpgrade", 1, 1, false)
         end
-        if (State.AutoProgression or State.AutoGifts) and now - lastGift >= (State.AutoProgression and 60 or 30) then
+        if State.AutoGifts and now - lastGift >= 30 then
             lastGift = now
             callNet("giftClaim", true)
         end
-        if (State.AutoProgression or State.AutoOffline) and now - lastOffline >= (State.AutoProgression and 60 or 45) then
+        if State.AutoOffline and now - lastOffline >= 45 then
             lastOffline = now
             callNet("offlineClaim")
         end
